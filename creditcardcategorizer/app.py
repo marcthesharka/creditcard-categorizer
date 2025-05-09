@@ -42,7 +42,8 @@ def make_celery(app=None):
 
 celery = make_celery(app)
 
-from flask import copy_current_app_context
+# No circular import needed; use current_app
+from flask import current_app
 
 @celery.task(name="creditcardcategorizer.app.process_transactions")
 def process_transactions(key):
@@ -50,10 +51,13 @@ def process_transactions(key):
     r = redis.from_url(redis_url)
     data = r.get(key)
     transactions = pickle.loads(data)
+    from flask_sse import sse
+    from flask import Flask
+    # Use Flask app context for SSE
+    app = current_app._get_current_object()
     for t in transactions:
         t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
-        # Send SSE event after each transaction
-        from app import app  # import your app instance
+        # Publish SSE event after each transaction
         with app.app_context():
             sse.publish(
                 {"description": t['description'], "category": t['category'], "enhanced": t['enhanced_description']},
@@ -63,6 +67,11 @@ def process_transactions(key):
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     return key
+
+# NOTE for Heroku: If you have SSE issues, try running with eventlet or gevent:
+#   gunicorn -k eventlet -w 1 creditcardcategorizer.app:app
+# Or set this in your Procfile
+
 
 def parse_pdf_transactions(pdf_path):
     import re
