@@ -1,2 +1,2 @@
 web: python creditcardcategorizer.py
-worker: python celery_worker.py worker --loglevel=info
+worker: celery -A creditcardcategorizer.celery worker --loglevel=info
