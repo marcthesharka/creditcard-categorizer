@@ -11,6 +11,7 @@ import pickle
 import json
 import re
 from celery import Celery
+import redis
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Replace with a secure key in production
@@ -40,14 +41,16 @@ def make_celery(app=None):
 celery = make_celery(app)
 
 @celery.task(name="creditcardcategorizer.app.process_transactions")
-def process_transactions(filename):
-    with open(filename, 'rb') as f:
-        transactions = pickle.load(f)
+def process_transactions(key):
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    data = r.get(key)
+    transactions = pickle.loads(data)
     for t in transactions:
         t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
-    with open(filename, 'wb') as f:
-        pickle.dump(transactions, f)
-    return filename
+    # Save back to Redis
+    r.set(key, pickle.dumps(transactions))
+    return key
 
 def parse_pdf_transactions(pdf_path):
     import re
@@ -166,29 +169,36 @@ def index():
                     transactions = parse_pdf_transactions(tmp.name)
                     os.unlink(tmp.name)
                 all_transactions.extend(transactions)
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pkl') as tf:
-            pickle.dump(all_transactions, tf)
-            temp_filename = tf.name
-        task = process_transactions.delay(temp_filename)
+        # Store pickled data in Redis with a unique key
+        redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+        r = redis.from_url(redis_url)
+        key = f"transactions:{session.sid if hasattr(session, 'sid') else os.urandom(8).hex()}"
+        r.set(key, pickle.dumps(all_transactions))
+        # Pass the key to the Celery task
+        task = process_transactions.delay(key)
         session['task_id'] = task.id
+        session['transactions_key'] = key
         print(f"Total transactions parsed: {len(all_transactions)}")
         return redirect(url_for('categorize'))
     return render_template('index.html')
 
 @app.route('/categorize', methods=['GET', 'POST'])
 def categorize():
-    transactions_file = session.get('transactions_file')
-    if not transactions_file or not os.path.exists(transactions_file):
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    key = session.get('transactions_key')
+    if not key:
         return redirect(url_for('index'))
-    with open(transactions_file, 'rb') as tf:
-        transactions = pickle.load(tf)
+    data = r.get(key)
+    if not data:
+        return redirect(url_for('index'))
+    transactions = pickle.loads(data)
     # Sort transactions by date descending
     transactions.sort(key=lambda t: t['date'], reverse=True)
     if request.method == 'POST':
         for i, t in enumerate(transactions):
             t['category'] = request.form.get(f'category_{i}', '')
-        with open(transactions_file, 'wb') as tf:
-            pickle.dump(transactions, tf)
+        r.set(key, pickle.dumps(transactions))
         return redirect(url_for('summary'))
 
     # Filter out repayment transactions for total spend calculation
@@ -208,11 +218,15 @@ def categorize():
 
 @app.route('/export')
 def export():
-    transactions_file = session.get('transactions_file')
-    if not transactions_file or not os.path.exists(transactions_file):
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    key = session.get('transactions_key')
+    if not key:
         return redirect(url_for('index'))
-    with open(transactions_file, 'rb') as tf:
-        transactions = pickle.load(tf)
+    data = r.get(key)
+    if not data:
+        return redirect(url_for('index'))
+    transactions = pickle.loads(data)
     if not transactions:
         return redirect(url_for('index'))
     # Sort transactions by date descending
@@ -250,11 +264,15 @@ def export():
 
 @app.route('/summary')
 def summary():
-    transactions_file = session.get('transactions_file')
-    if not transactions_file or not os.path.exists(transactions_file):
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    key = session.get('transactions_key')
+    if not key:
         return redirect(url_for('index'))
-    with open(transactions_file, 'rb') as tf:
-        transactions = pickle.load(tf)
+    data = r.get(key)
+    if not data:
+        return redirect(url_for('index'))
+    transactions = pickle.loads(data)
     # Use the same repayment exclusion logic as categorize
     def is_repayment(txn):
         desc = txn['description'].strip().upper()
@@ -354,10 +372,11 @@ def task_status():
         return {'state': 'NO_TASK'}
     task = process_transactions.AsyncResult(task_id)
     if task.state == 'SUCCESS':
-        filename = task.result
-        with open(filename, 'rb') as f:
-            transactions = pickle.load(f)
-        # Save to session or database as needed
+        key = task.result
+        redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+        r = redis.from_url(redis_url)
+        data = r.get(key)
+        transactions = pickle.loads(data)
         return {'state': 'SUCCESS', 'result': transactions}
     return {'state': task.state}
 
