@@ -15,6 +15,7 @@ from celery import Celery
 import redis
 
 app = Flask(__name__)
+app.config["REDIS_URL"] = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
 app.register_blueprint(sse, url_prefix='/stream')
 app.secret_key = 'your_secret_key'  # Replace with a secure key in production
 
