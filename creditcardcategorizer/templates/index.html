@@ -42,6 +42,7 @@
         </a>
         <button class="btn btn-outline-secondary btn-sm" onclick="copyLink()" style="vertical-align:middle;">Copy Link</button>
     </div>
+{% if not processing %}
     <h3>Upload Credit Card Statements (Up to 12, in PDF Format)</h3>
     <form method="post" enctype="multipart/form-data">
         <div id="file-inputs">
@@ -77,6 +78,31 @@
             });
         }
     </script>
+{% endif %}
+{% if processing %}
+    <script>
+        // You must pass the session key from Flask to JS. Example:
+        const key = "{{ session['transactions_key'] }}";
+        const terminal = document.getElementById('progress-log');
+        if (terminal) {
+            terminal.textContent = "Waiting for categorization to start...\n";
+            const source = new EventSource(`/stream?channel=${key}`);
+            source.addEventListener('progress', function(event) {
+                const data = JSON.parse(event.data);
+                terminal.textContent += `${data.description} → ${data.category}\n${data.enhanced}\n\n`;
+                terminal.scrollTop = terminal.scrollHeight;
+            });
+            source.addEventListener('done', function(event) {
+                // Redirect to /categorize when done event is received
+                window.location.href = '/categorize';
+            });
+        }
+    </script>
+    <div style="margin-top:2em;">
+        <h3>Live Categorization Progress:</h3>
+        <pre id="progress-log" style="background:#222;color:#0f0;padding:1em;max-height:300px;overflow:auto;">Waiting for categorization to start...</pre>
+    </div>
+{% endif %}
     {% if processing %}
     <script>
         // You must pass the session key from Flask to JS. Example:
