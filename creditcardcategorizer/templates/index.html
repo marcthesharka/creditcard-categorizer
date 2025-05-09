@@ -66,7 +66,7 @@
         const key = "{{ sse_channel }}";
         const terminal = document.getElementById('progress-log');
         if (terminal) {
-            terminal.textContent = "Waiting for categorization to start...\n";
+            terminal.textContent = "Loading...\n";
             const source = new EventSource(`/stream?channel=${key}`);
             source.addEventListener('progress', function(event) {
                 const data = JSON.parse(event.data);

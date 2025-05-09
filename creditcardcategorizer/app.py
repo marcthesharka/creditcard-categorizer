@@ -53,20 +53,18 @@ def process_transactions(key):
     r = redis.from_url(redis_url)
     data = r.get(key)
     transactions = pickle.loads(data)
-    from flask_sse import sse
-    from flask import Flask
-    # Use Flask app context for SSE
-    app = current_app._get_current_object()
     for t in transactions:
         t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'], key)
-        # Publish SSE event after each transaction
-        with app.app_context():
-            sse.publish(
-                {"description": t['description'], "category": t['category'], "enhanced": t['enhanced_description']},
-                type='progress',
-                channel=key
-            )
-            print(f"[SSE] Published transaction '{t['description']}' to channel '{key}'")
+        # Publish progress event directly to Redis pubsub
+        r.publish(
+            key,
+            json.dumps({
+                "description": t['description'],
+                "category": t['category'],
+                "enhanced": t['enhanced_description']
+            })
+        )
+        print(f"[PUBSUB] Published transaction '{t['description']}' to channel '{key}'")
         progress_key = f"progress:{key}"
         current_log = r.get(progress_key) or b""
         new_log = current_log + f"Categorized: {t['description']} as {t['category']}\n".encode()
@@ -74,9 +72,8 @@ def process_transactions(key):
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     # Publish final 'done' event for frontend redirect
-    with app.app_context():
-        sse.publish({"done": True}, type='done', channel=key)
-        print(f"[SSE] Published DONE event to channel '{key}'")
+    r.publish(key, json.dumps({"done": True}))
+    print(f"[PUBSUB] Published DONE event to channel '{key}'")
     return key
 
 # NOTE for Heroku: If you have SSE issues, try running with eventlet or gevent:
