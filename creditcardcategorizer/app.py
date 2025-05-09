@@ -68,6 +68,10 @@ def process_transactions(key):
             print(f"[SSE] Published transaction '{t['description']}' to channel '{key}'")
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
+    # Publish final 'done' event for frontend redirect
+    with app.app_context():
+        sse.publish({"done": True}, type='done', channel=key)
+        print(f"[SSE] Published DONE event to channel '{key}'")
     return key
 
 # NOTE for Heroku: If you have SSE issues, try running with eventlet or gevent:
@@ -195,12 +199,12 @@ def index():
         # Store pickled data in Redis with a unique key
         redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
         r = redis.from_url(redis_url)
-        key = f"transactions:{session.sid if hasattr(session, 'sid') else os.urandom(8).hex()}"
+        key = f"transactions:{uuid.uuid4().hex}"
+        session['transactions_key'] = key
         r.set(key, pickle.dumps(all_transactions))
         # Pass the key to the Celery task
         task = process_transactions.delay(key)
         session['task_id'] = task.id
-        session['transactions_key'] = key
         print(f"Total transactions parsed: {len(all_transactions)}")
         return redirect(url_for('processing'))
     return render_template('index.html')

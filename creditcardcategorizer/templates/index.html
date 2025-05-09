@@ -89,6 +89,10 @@
             terminal.textContent += `${data.description} → ${data.category}\n${data.enhanced}\n\n`;
             terminal.scrollTop = terminal.scrollHeight;
         });
+        source.addEventListener('done', function(event) {
+            // Redirect to /categorize when done event is received
+            window.location.href = '/categorize';
+        });
     </script>
     <div style="margin-top:2em;">
         <h3>Live Categorization Progress:</h3>
