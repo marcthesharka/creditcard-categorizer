@@ -2,7 +2,7 @@ print("Starting app.py")
 
 import os
 import tempfile
-from flask import Flask, render_template, request, redirect, url_for, send_file, session
+from flask import Flask, render_template, request, redirect, url_for, send_file, session, Response
 from flask_sse import sse
 import pdfplumber
 import pandas as pd
@@ -424,6 +424,30 @@ def task_status():
         transactions = pickle.loads(data)
         return {'state': 'SUCCESS', 'result': transactions}
     return {'state': task.state}
+
+@app.route('/stream')
+def stream():
+    channel = request.args.get('channel')
+    if not channel:
+        return "Missing channel", 400
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    pubsub = r.pubsub()
+    pubsub.subscribe(channel)
+    def event_stream():
+        for message in pubsub.listen():
+            if message['type'] == 'message':
+                data = message['data'].decode()
+                try:
+                    payload = json.loads(data)
+                except Exception:
+                    payload = data
+                if isinstance(payload, dict) and payload.get("done"):
+                    yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+                    break
+                else:
+                    yield f"event: progress\ndata: {json.dumps(payload)}\n\n"
+    return Response(event_stream(), mimetype="text/event-stream")
 
 if __name__ == '__main__':
     import os
