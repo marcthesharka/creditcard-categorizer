@@ -39,7 +39,7 @@ def make_celery(app=None):
 
 celery = make_celery(app)
 
-@celery.task()
+@celery.task(name="creditcardcategorizer.app.process_transactions")
 def process_transactions(filename):
     with open(filename, 'rb') as f:
         transactions = pickle.load(f)
