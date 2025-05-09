@@ -348,8 +348,12 @@ def categorize_and_enhance_transaction(description):
         )
         content = response.choices[0].message.content.strip()
         print("OpenAI raw response:", content)
-        with open(LOG_FILE, 'a') as logf:
-            logf.write(f"{description}:\n{content}\n\n")
+        redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+        r = redis.from_url(redis_url)
+        progress_key = f"progress:{key}"  # Use the same key as your transactions
+        current_log = r.get(progress_key) or b""
+        new_log = current_log + f"{description}:\n{content}\n\n".encode()
+        r.set(progress_key, new_log)
         # Remove code block markers if present
         if content.startswith("```"):
             content = re.sub(r"^```[a-zA-Z]*\\n?", "", content)
@@ -357,17 +361,19 @@ def categorize_and_enhance_transaction(description):
         data = json.loads(content)
         return data.get("category", "Uncategorized"), data.get("enhanced_description", description)
     except Exception as e:
-        with open(LOG_FILE, 'a') as logf:
-            logf.write(f"{description}:\nOpenAI error: {e}\n\n")
         print(f"OpenAI error (combined): {e}")
         return "Uncategorized", description
 
 @app.route('/progress')
 def progress():
-    if os.path.exists(LOG_FILE):
-        with open(LOG_FILE, 'r') as f:
-            return f.read()
-    return ""
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
+    r = redis.from_url(redis_url)
+    key = session.get('transactions_key')
+    if not key:
+        return ""
+    progress_key = f"progress:{key}"
+    log = r.get(progress_key)
+    return log.decode() if log else ""
 
 @app.route('/task_status')
 def task_status():
