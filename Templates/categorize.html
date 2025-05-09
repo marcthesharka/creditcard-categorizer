@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Categorized Transactions Output</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="container mt-5">
+    <h1>Categorized Transactions Output</h1>
+    <form method="post">
+        <div class="mb-3 d-flex align-items-center justify-content-between">
+            <div>
+                <a href="{{ url_for('summary') }}" class="btn btn-info me-2">View Spending Summary</a>
+                <a href="{{ url_for('export') }}" class="btn btn-success">Export to Excel</a>
+            </div>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+        {% set min_date = transactions|map(attribute='date')|min %}
+        {% set max_date = transactions|map(attribute='date')|max %}
+        {% set total_spend = filtered_transactions|map(attribute='amount')|sum %}
+        <div class="alert alert-secondary text-center" role="alert">
+            <strong>Total Spend from {{ min_date.strftime('%Y-%m-%d') }} to {{ max_date.strftime('%Y-%m-%d') }}:</strong>
+            ${{ '%.2f' % total_spend }}
+        </div>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Card</th>
+                    <th>Raw Txn Description</th>
+                    <th>Enhanced Txn Description</th>
+                    <th>Amount</th>
+                    <th>Category</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td>{{ t.date.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ t.card }}</td>
+                    <td>{{ t.description }}</td>
+                    <td>{{ t.enhanced_description }}</td>
+                    <td>{{ t.amount }}</td>
+                    <td>
+                        <input type="text" name="category_{{ loop.index0 }}" value="{{ t.category }}" class="form-control">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </form>
+</body>
+</html>

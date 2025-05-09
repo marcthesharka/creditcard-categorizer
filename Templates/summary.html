@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>Spending Summary</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+</head>
+<body class="container mt-5">
+    <a href="{{ url_for('categorize') }}" class="btn btn-primary mb-3">Back to Categorized Transactions</a>
+    <div class="row">
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <h1 class="text-center w-100">Total CC Spend by Category</h1>
+            <div class="text-center mb-2">
+                <strong>Total:</strong> ${{ '{:,.2f}'.format(total_spend) }}<br>
+                <strong>Period:</strong> {{ min_date }} to {{ max_date }}
+            </div>
+        </div>
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <h1 class="text-center w-100">Total Monthly Spend by Category</h1>
+            <div class="text-center mb-2">
+                <strong>Total:</strong> ${{ '{:,.2f}'.format(total_spend) }}<br>
+                <strong>Period:</strong> {{ min_date }} to {{ max_date }}
+            </div>
+        </div>
+    </div>
+    <div class="row align-items-center">
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <canvas id="pieChart" style="width:100%; max-width:400px; min-width:250px; min-height:250px; max-height:400px; margin-bottom: 10px;"></canvas>
+        </div>
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <canvas id="barChart" style="width:100%; max-width:600px; min-width:300px; min-height:250px; max-height:400px; margin-bottom: 10px;"></canvas>
+        </div>
+    </div>
+    <h2 class="mt-1" style="margin-top: 5px;">Category Breakdown</h2>
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Category</th>
+                <th>Total Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in summary.itertuples() %}
+            <tr>
+                <td>{{ row.category }}</td>
+                <td>${{ "%.2f"|format(row.amount) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <script>
+        // Pie chart
+        const ctx = document.getElementById('pieChart').getContext('2d');
+        const total = {{ values|sum }};
+        const pieChart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: {{ labels|tojson }},
+                datasets: [{
+                    data: {{ values|tojson }},
+                    backgroundColor: [
+                        '#4e79a7', '#f28e2b', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab'
+                    ]
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: { position: 'right' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                let value = context.parsed;
+                                let percent = (value / total * 100).toFixed(1);
+                                return `${label}: $${value.toLocaleString()} (${percent}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        // Bar chart data (to be filled in by Flask)
+        const barLabels = {{ bar_labels|tojson }};
+        const barDatasets = {{ bar_datasets|tojson }};
+        const barChart = new Chart(document.getElementById('barChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: barLabels,
+                datasets: barDatasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: { display: false }
+                },
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true, min: 0, title: { display: true, text: 'Amount ($)' } }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
