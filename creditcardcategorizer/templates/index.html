@@ -14,6 +14,13 @@
             input.required = true;
             container.appendChild(input);
         }
+        function copyLink() {
+            navigator.clipboard.writeText(window.location.href).then(function() {
+                alert('Link copied to clipboard!');
+            }, function(err) {
+                alert('Failed to copy link: ' + err);
+            });
+        }
     </script>
 </head>
 <body class="container mt-5">
@@ -52,37 +59,11 @@
         <br>
         <button type="submit" class="btn btn-primary" id="parse-btn">Parse & Categorize</button>
     </form>
-    <div id="terminal-window" style="display:none; background:#222; color:rgb(255, 255, 255); font-family:monospace; padding:10px; margin-top:20px; height:200px; overflow-y:auto; border-radius:5px;">
-        <span>Parsing and categorizing transactions...</span>
-        <pre id="terminal-content"></pre>
-    </div>
-    <script>
-        document.querySelector('form').addEventListener('submit', function(e) {
-            document.getElementById('terminal-window').style.display = 'block';
-            document.getElementById('terminal-content').textContent = '';
-            pollProgress();
-        });
-        function pollProgress() {
-            fetch('/progress')
-                .then(response => response.text())
-                .then(data => {
-                    document.getElementById('terminal-content').textContent = data;
-                    setTimeout(pollProgress, 1000);
-                });
-        }
-        function copyLink() {
-            navigator.clipboard.writeText(window.location.href).then(function() {
-                alert('Link copied to clipboard!');
-            }, function(err) {
-                alert('Failed to copy link: ' + err);
-            });
-        }
-    </script>
 {% endif %}
 {% if processing %}
     <script>
-        // You must pass the session key from Flask to JS. Example:
-        const key = "{{ session['transactions_key'] }}";
+        // Use the sse_channel variable passed from Flask
+        const key = "{{ sse_channel }}";
         const terminal = document.getElementById('progress-log');
         if (terminal) {
             terminal.textContent = "Waiting for categorization to start...\n";
@@ -103,29 +84,5 @@
         <pre id="progress-log" style="background:#222;color:#0f0;padding:1em;max-height:300px;overflow:auto;">Waiting for categorization to start...</pre>
     </div>
 {% endif %}
-    {% if processing %}
-    <script>
-        // You must pass the session key from Flask to JS. Example:
-        const key = "{{ session['transactions_key'] }}";
-        const terminal = document.getElementById('progress-log');
-        if (terminal) {
-            terminal.textContent = "Waiting for categorization to start...\n";
-            const source = new EventSource(`/stream?channel=${key}`);
-            source.addEventListener('progress', function(event) {
-                const data = JSON.parse(event.data);
-                terminal.textContent += `${data.description} → ${data.category}\n${data.enhanced}\n\n`;
-                terminal.scrollTop = terminal.scrollHeight;
-            });
-            source.addEventListener('done', function(event) {
-                // Redirect to /categorize when done event is received
-                window.location.href = '/categorize';
-            });
-        }
-    </script>
-    <div style="margin-top:2em;">
-        <h3>Live Categorization Progress:</h3>
-        <pre id="progress-log" style="background:#222;color:#0f0;padding:1em;max-height:300px;overflow:auto;">Waiting for categorization to start...</pre>
-    </div>
-    {% endif %}
 </body>
 </html>

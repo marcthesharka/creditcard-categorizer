@@ -67,6 +67,10 @@ def process_transactions(key):
                 channel=key
             )
             print(f"[SSE] Published transaction '{t['description']}' to channel '{key}'")
+        progress_key = f"progress:{key}"
+        current_log = r.get(progress_key) or b""
+        new_log = current_log + f"Categorized: {t['description']} as {t['category']}\n".encode()
+        r.set(progress_key, new_log)
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     # Publish final 'done' event for frontend redirect
@@ -212,7 +216,10 @@ def index():
 
 @app.route('/processing')
 def processing():
-    return render_template('index.html', processing=True)
+    key = session.get('transactions_key')
+    if not key:
+        return redirect(url_for('index'))
+    return render_template('index.html', processing=True, sse_channel=key)
 
 @app.route('/categorize', methods=['GET', 'POST'])
 def categorize():
