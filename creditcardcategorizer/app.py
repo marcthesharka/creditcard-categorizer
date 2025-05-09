@@ -179,8 +179,12 @@ def index():
         session['task_id'] = task.id
         session['transactions_key'] = key
         print(f"Total transactions parsed: {len(all_transactions)}")
-        return redirect(url_for('categorize'))
+        return redirect(url_for('processing'))
     return render_template('index.html')
+
+@app.route('/processing')
+def processing():
+    return render_template('index.html', processing=True)
 
 @app.route('/categorize', methods=['GET', 'POST'])
 def categorize():

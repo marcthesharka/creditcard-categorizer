@@ -77,5 +77,36 @@
             });
         }
     </script>
+    {% if processing %}
+    <script>
+    function checkStatus() {
+        fetch('/task_status')
+            .then(res => res.json())
+            .then(data => {
+                if (data.state === 'SUCCESS') {
+                    window.location.href = '/categorize';
+                } else {
+                    setTimeout(checkStatus, 2000);
+                }
+            });
+    }
+    function updateProgress() {
+        fetch('/progress')
+            .then(res => res.text())
+            .then(log => {
+                document.getElementById('progress-log').textContent = log;
+                setTimeout(updateProgress, 1000);
+            });
+    }
+    window.onload = function() {
+        checkStatus();
+        updateProgress();
+    };
+    </script>
+    <div style="margin-top:2em;">
+        <h3>Live Categorization Progress:</h3>
+        <pre id="progress-log" style="background:#222;color:#0f0;padding:1em;max-height:300px;overflow:auto;"></pre>
+    </div>
+    {% endif %}
 </body>
 </html>
