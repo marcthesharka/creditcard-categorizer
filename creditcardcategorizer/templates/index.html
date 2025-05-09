@@ -79,29 +79,16 @@
     </script>
     {% if processing %}
     <script>
-    function checkStatus() {
-        fetch('/task_status')
-            .then(res => res.json())
-            .then(data => {
-                if (data.state === 'SUCCESS') {
-                    window.location.href = '/categorize';
-                } else {
-                    setTimeout(checkStatus, 2000);
-                }
-            });
-    }
-    function updateProgress() {
-        fetch('/progress')
-            .then(res => res.text())
-            .then(log => {
-                document.getElementById('progress-log').textContent = log || "Waiting for categorization to start...";
-                setTimeout(updateProgress, 1000);
-            });
-    }
-    window.onload = function() {
-        checkStatus();
-        updateProgress();
-    };
+        // You must pass the session key from Flask to JS. Example:
+        const key = "{{ session['transactions_key'] }}";
+        const terminal = document.getElementById('progress-log');
+        terminal.textContent = "Waiting for categorization to start...\n";
+        const source = new EventSource(`/stream?channel=${key}`);
+        source.addEventListener('progress', function(event) {
+            const data = JSON.parse(event.data);
+            terminal.textContent += `${data.description} → ${data.category}\n${data.enhanced}\n\n`;
+            terminal.scrollTop = terminal.scrollHeight;
+        });
     </script>
     <div style="margin-top:2em;">
         <h3>Live Categorization Progress:</h3>

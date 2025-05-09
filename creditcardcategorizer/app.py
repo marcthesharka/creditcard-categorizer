@@ -3,6 +3,7 @@ print("Starting app.py")
 import os
 import tempfile
 from flask import Flask, render_template, request, redirect, url_for, send_file, session
+from flask_sse import sse
 import pdfplumber
 import pandas as pd
 from datetime import datetime, date, timedelta
@@ -14,6 +15,7 @@ from celery import Celery
 import redis
 
 app = Flask(__name__)
+app.register_blueprint(sse, url_prefix='/stream')
 app.secret_key = 'your_secret_key'  # Replace with a secure key in production
 
 api_key = os.getenv("OPENAI_API_KEY")
@@ -40,6 +42,8 @@ def make_celery(app=None):
 
 celery = make_celery(app)
 
+from flask import copy_current_app_context
+
 @celery.task(name="creditcardcategorizer.app.process_transactions")
 def process_transactions(key):
     redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
@@ -48,6 +52,14 @@ def process_transactions(key):
     transactions = pickle.loads(data)
     for t in transactions:
         t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
+        # Send SSE event after each transaction
+        from app import app  # import your app instance
+        with app.app_context():
+            sse.publish(
+                {"description": t['description'], "category": t['category'], "enhanced": t['enhanced_description']},
+                type='progress',
+                channel=key
+            )
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     return key
