@@ -11,6 +11,7 @@ import openai
 import pickle
 import json
 import re
+import uuid
 from celery import Celery
 import redis
 
