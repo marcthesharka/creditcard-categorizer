@@ -65,6 +65,7 @@ def process_transactions(key):
                 type='progress',
                 channel=key
             )
+            print(f"[SSE] Published transaction '{t['description']}' to channel '{key}'")
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     return key
