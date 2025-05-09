@@ -21,10 +21,11 @@ LOG_FILE = os.path.join(tempfile.gettempdir(), 'openai_progress.log')
 
 def make_celery(app=None):
     app = app or Flask(__name__)
+    redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL") or "redis://localhost:6379/0"
     celery = Celery(
         app.import_name,
-        backend=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
-        broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+        backend=redis_url,
+        broker=redis_url
     )
     celery.conf.update(app.config)
     TaskBase = celery.Task
