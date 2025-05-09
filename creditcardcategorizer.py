@@ -10,6 +10,7 @@ import openai
 import pickle
 import json
 import re
+from celery import Celery
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'  # Replace with a secure key in production
@@ -17,6 +18,31 @@ app.secret_key = 'your_secret_key'  # Replace with a secure key in production
 api_key = os.getenv("OPENAI_API_KEY")
 
 LOG_FILE = os.path.join(tempfile.gettempdir(), 'openai_progress.log')
+
+def make_celery(app=None):
+    app = app or Flask(__name__)
+    celery = Celery(
+        app.import_name,
+        backend=os.environ.get("REDIS_URL", "redis://localhost:6379/0"),
+        broker=os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+    )
+    celery.conf.update(app.config)
+    TaskBase = celery.Task
+
+    class ContextTask(TaskBase):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return TaskBase.__call__(self, *args, **kwargs)
+    celery.Task = ContextTask
+    return celery
+
+celery = make_celery(app)
+
+@celery.task()
+def process_transactions(transactions):
+    for t in transactions:
+        t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
+    return transactions
 
 def parse_pdf_transactions(pdf_path):
     import re
@@ -136,13 +162,8 @@ def index():
                     os.unlink(tmp.name)
                 all_transactions.extend(transactions)
         # Auto-categorize using OpenAI
-        for t in all_transactions:
-            t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
-        # Save to a temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.pkl') as tf:
-            pickle.dump(all_transactions, tf)
-            temp_filename = tf.name
-        session['transactions_file'] = temp_filename
+        task = process_transactions.delay(all_transactions)
+        session['task_id'] = task.id
         print(f"Total transactions parsed: {len(all_transactions)}")
         return redirect(url_for('categorize'))
     return render_template('index.html')
@@ -318,6 +339,17 @@ def progress():
         with open(LOG_FILE, 'r') as f:
             return f.read()
     return ""
+
+@app.route('/task_status')
+def task_status():
+    task_id = session.get('task_id')
+    if not task_id:
+        return {'state': 'NO_TASK'}
+    task = process_transactions.AsyncResult(task_id)
+    if task.state == 'SUCCESS':
+        # Save or return the result as needed
+        return {'state': 'SUCCESS', 'result': task.result}
+    return {'state': task.state}
 
 if __name__ == '__main__':
     import os
