@@ -57,7 +57,7 @@ def process_transactions(key):
     # Use Flask app context for SSE
     app = current_app._get_current_object()
     for t in transactions:
-        t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'])
+        t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'], key)
         # Publish SSE event after each transaction
         with app.app_context():
             sse.publish(
@@ -349,7 +349,7 @@ def summary():
         bar_datasets=bar_datasets
     )
 
-def categorize_and_enhance_transaction(description):
+def categorize_and_enhance_transaction(description, key):
     # Special case for card repayment
     if description.strip().upper() == 'AUTOMATIC PAYMENT - THANK YOU':
         return 'Card Repayment', 'Credit card bill payment'
