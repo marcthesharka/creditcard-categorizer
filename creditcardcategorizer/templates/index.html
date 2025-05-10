@@ -62,6 +62,7 @@
 {% endif %}
 {% if processing %}
     <script>
+        console.log("Processing SSE script loaded, key =", key);
         // Use the sse_channel variable passed from Flask
         const key = "{{ sse_channel }}";
         const terminal = document.getElementById('progress-log');

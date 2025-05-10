@@ -224,7 +224,9 @@ def index():
 @app.route('/processing')
 def processing():
     key = session.get('transactions_key')
+    print(f"[PROCESSING ROUTE] transactions_key in session: {key}")
     if not key:
+        print("[PROCESSING ROUTE] No transactions_key, redirecting to index.")
         return redirect(url_for('index'))
     return render_template('index.html', processing=True, sse_channel=key)
 
