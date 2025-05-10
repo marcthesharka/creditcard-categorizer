@@ -14,6 +14,8 @@ import re
 import uuid
 from celery import Celery
 import redis
+import psutil
+import time
 
 app = Flask(__name__)
 app.config["REDIS_URL"] = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
@@ -53,22 +55,30 @@ def process_transactions(key):
     r = redis.from_url(redis_url)
     data = r.get(key)
     transactions = pickle.loads(data)
-    for t in transactions:
-        t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'], key)
-        # Publish progress event directly to Redis pubsub
-        r.publish(
-            key,
-            json.dumps({
-                "description": t['description'],
-                "category": t['category'],
-                "enhanced": t['enhanced_description']
-            })
-        )
-        print(f"[PUBSUB] Published transaction '{t['description']}' to channel '{key}'")
-        progress_key = f"progress:{key}"
-        current_log = r.get(progress_key) or b""
-        new_log = current_log + f"Categorized: {t['description']} as {t['category']}\n".encode()
-        r.set(progress_key, new_log)
+    batch_size = 10
+    total = len(transactions)
+    for i in range(0, total, batch_size):
+        batch = transactions[i:i+batch_size]
+        for t in batch:
+            t['category'], t['enhanced_description'] = categorize_and_enhance_transaction(t['description'], key)
+            # Publish progress event directly to Redis pubsub
+            r.publish(
+                key,
+                json.dumps({
+                    "description": t['description'],
+                    "category": t['category'],
+                    "enhanced": t['enhanced_description']
+                })
+            )
+            print(f"[PUBSUB] Published transaction '{t['description']}' to channel '{key}'")
+            progress_key = f"progress:{key}"
+            current_log = r.get(progress_key) or b""
+            new_log = current_log + f"Categorized: {t['description']} as {t['category']}\n".encode()
+            r.set(progress_key, new_log)
+        # Log memory usage after each batch
+        process = psutil.Process(os.getpid())
+        mem_mb = process.memory_info().rss / 1024 / 1024
+        print(f"[MEMORY] Worker memory usage after batch {i//batch_size+1}: {mem_mb:.2f} MB")
     # Save back to Redis
     r.set(key, pickle.dumps(transactions))
     # Publish final 'done' event for frontend redirect
@@ -425,6 +435,7 @@ def task_status():
 @app.route('/stream')
 def stream():
     channel = request.args.get('channel')
+    print(f"[SSE] Client connected to /stream for channel: {channel}")
     if not channel:
         return "Missing channel", 400
     redis_url = os.environ.get("REDISCLOUD_URL") or os.environ.get("REDIS_URL")
@@ -432,9 +443,11 @@ def stream():
     pubsub = r.pubsub()
     pubsub.subscribe(channel)
     def event_stream():
+        last_event = time.time()
         for message in pubsub.listen():
             if message['type'] == 'message':
                 data = message['data'].decode()
+                print(f"[SSE] Sending event to client: {data}")
                 try:
                     payload = json.loads(data)
                 except Exception:
@@ -444,6 +457,11 @@ def stream():
                     break
                 else:
                     yield f"event: progress\ndata: {json.dumps(payload)}\n\n"
+                last_event = time.time()
+            # Send keep-alive every 15 seconds
+            if time.time() - last_event > 15:
+                yield ": keep-alive\n\n"
+                last_event = time.time()
     return Response(event_stream(), mimetype="text/event-stream")
 
 if __name__ == '__main__':
